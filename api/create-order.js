@@ -1,34 +1,61 @@
-import Razorpay from "razorpay";
+const Razorpay = require("razorpay");
 
-export default async function handler(req, res) {
-  console.log("API HIT: create-order");
-
-  try {
-    const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
-
-    console.log("KEY:", process.env.RAZORPAY_KEY_ID);
-
-    const order = await razorpay.orders.create({
-      amount: 100 * 100,
-      currency: "INR",
-    });
-
-    console.log("ORDER CREATED:", order.id);
-
-    res.status(200).json({
-      success: true,
-      order,
-      key: process.env.RAZORPAY_KEY_ID,
-    });
-  } catch (error) {
-    console.error("ERROR:", error);
-
-    res.status(500).json({
+module.exports = async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({
       success: false,
-      error: error.message,
+      error: "Method not allowed",
     });
   }
-}
+
+  try {
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+      return res.status(500).json({
+        success: false,
+        error: "Missing Razorpay environment variables",
+      });
+    }
+
+    const body =
+      typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+
+    const amount = Number(body.amount || 0);
+    const receipt = body.receipt || `receipt_${Date.now()}`;
+    const notes = body.notes || {};
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Valid amount is required",
+      });
+    }
+
+    const razorpay = new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    });
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
+      currency: "INR",
+      receipt,
+      notes,
+    });
+
+    return res.status(200).json({
+      success: true,
+      key: keyId,
+      order,
+    });
+  } catch (error) {
+    console.error("CREATE_ORDER_ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error?.description || error?.message || "Failed to create order",
+    });
+  }
+};
