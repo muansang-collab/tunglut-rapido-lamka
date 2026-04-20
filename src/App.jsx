@@ -5,10 +5,11 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 import BookingsPage from "./pages/BookingsPage.jsx";
 import DriversPage from "./pages/DriversPage.jsx";
 import WalletPage from "./pages/WalletPage.jsx";
+import PaymentsPage from "./pages/PaymentsPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
-import RoleEntryPage from "./pages/RoleEntryPage.jsx";
 import NotificationsPage from "./pages/NotificationsPage.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
 import { firebaseStatus } from "./firebase";
 import {
   loadBookingsFromFirestore,
@@ -19,7 +20,7 @@ import {
 
 const THEME_STORAGE_KEY = "tunglut-theme";
 const APP_DATA_STORAGE_KEY = "tunglut-rapido-lamka-data";
-const ROLE_STORAGE_KEY = "tunglut-role";
+const SESSION_STORAGE_KEY = "tunglut-session";
 
 const defaultAppData = {
   bookings: [
@@ -230,14 +231,23 @@ function loadAppDataFromLocalStorage() {
   }
 }
 
+function loadSessionFromLocalStorage() {
+  try {
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!saved) return null;
+    return JSON.parse(saved);
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     return saved === "light" || saved === "dark" ? saved : "dark";
   });
 
-  const [role, setRole] = useState(() => localStorage.getItem(ROLE_STORAGE_KEY) || "");
-
+  const [session, setSession] = useState(() => loadSessionFromLocalStorage());
   const [appData, setAppData] = useState(() => loadAppDataFromLocalStorage());
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
   const [canInstallApp, setCanInstallApp] = useState(false);
@@ -247,6 +257,9 @@ function App() {
   const bookingsSyncTimerRef = useRef(null);
   const autoRefreshTimerRef = useRef(null);
   const lastSeenStorageSnapshotRef = useRef("");
+
+  const role = session?.role || "";
+  const user = session || null;
 
   function refreshFromLocalStorage() {
     try {
@@ -281,6 +294,14 @@ function App() {
     } catch {
       return false;
     }
+  }
+
+  function handleLogin(nextUser) {
+    setSession(nextUser);
+  }
+
+  function handleLogout() {
+    setSession(null);
   }
 
   useEffect(() => {
@@ -347,12 +368,12 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (role) {
-      localStorage.setItem(ROLE_STORAGE_KEY, role);
+    if (session) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
     } else {
-      localStorage.removeItem(ROLE_STORAGE_KEY);
+      localStorage.removeItem(SESSION_STORAGE_KEY);
     }
-  }, [role]);
+  }, [session]);
 
   useEffect(() => {
     const nextAppData = {
@@ -370,17 +391,24 @@ function App() {
 
   useEffect(() => {
     function handleStorage(event) {
-      if (event.key !== APP_DATA_STORAGE_KEY) return;
-      refreshFromLocalStorage();
+      if (event.key === APP_DATA_STORAGE_KEY) {
+        refreshFromLocalStorage();
+      }
+
+      if (event.key === SESSION_STORAGE_KEY) {
+        setSession(loadSessionFromLocalStorage());
+      }
     }
 
     function handleFocus() {
       refreshFromLocalStorage();
+      setSession(loadSessionFromLocalStorage());
     }
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
         refreshFromLocalStorage();
+        setSession(loadSessionFromLocalStorage());
       }
     }
 
@@ -451,34 +479,45 @@ function App() {
       setAppData,
       firebaseStatus,
       role,
-      setRole,
+      user,
+      onLogout: handleLogout,
     }),
-    [appData, role]
+    [appData, role, user]
   );
 
   return (
     <Routes>
       <Route
-        path="/role"
-        element={<RoleEntryPage role={role} setRole={setRole} />}
+        path="/login"
+        element={
+          session ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <LoginPage
+              appName={appData?.settings?.appName || "Tunglut Rapido Lamka"}
+              onLogin={handleLogin}
+            />
+          )
+        }
       />
 
       <Route
         path="/"
         element={
-          role ? (
+          session ? (
             <AppLayout
               theme={theme}
               setTheme={setTheme}
               appName={appData?.settings?.appName || "Tunglut Rapido Lamka"}
               role={role}
-              setRole={setRole}
+              user={user}
+              onLogout={handleLogout}
               unreadNotificationsCount={unreadNotificationsCount}
               canInstallApp={canInstallApp}
               onInstallApp={handleInstallApp}
             />
           ) : (
-            <Navigate to="/role" replace />
+            <Navigate to="/login" replace />
           )
         }
       >
@@ -487,6 +526,7 @@ function App() {
         <Route path="bookings" element={<BookingsPage {...sharedProps} />} />
         <Route path="drivers" element={<DriversPage {...sharedProps} />} />
         <Route path="wallet" element={<WalletPage {...sharedProps} />} />
+        <Route path="payments" element={<PaymentsPage {...sharedProps} />} />
         <Route path="reports" element={<ReportsPage {...sharedProps} />} />
         <Route
           path="notifications"
@@ -497,7 +537,7 @@ function App() {
 
       <Route
         path="*"
-        element={<Navigate to={role ? "/dashboard" : "/role"} replace />}
+        element={<Navigate to={session ? "/dashboard" : "/login"} replace />}
       />
     </Routes>
   );

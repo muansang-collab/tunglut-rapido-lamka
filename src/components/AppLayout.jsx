@@ -7,6 +7,7 @@ const navByRole = {
     { to: "/bookings", label: "Bookings", icon: "🛵" },
     { to: "/drivers", label: "Drivers", icon: "👨‍✈️" },
     { to: "/wallet", label: "Wallet", icon: "💰" },
+    { to: "/payments", label: "Payments", icon: "💳" },
     { to: "/reports", label: "Reports", icon: "📊" },
     { to: "/notifications", label: "Notifications", icon: "🔔" },
     { to: "/settings", label: "Settings", icon: "⚙️" },
@@ -15,6 +16,7 @@ const navByRole = {
     { to: "/dashboard", label: "Dashboard", icon: "🏠" },
     { to: "/bookings", label: "My Rides", icon: "🛵" },
     { to: "/wallet", label: "Earnings", icon: "💰" },
+    { to: "/payments", label: "Payments", icon: "💳" },
     { to: "/reports", label: "Reports", icon: "📊" },
     { to: "/notifications", label: "Notifications", icon: "🔔" },
   ],
@@ -22,6 +24,7 @@ const navByRole = {
     { to: "/dashboard", label: "Dashboard", icon: "🏠" },
     { to: "/bookings", label: "My Bookings", icon: "📱" },
     { to: "/wallet", label: "Payments", icon: "💳" },
+    { to: "/payments", label: "Payments", icon: "💳" },
     { to: "/reports", label: "Reports", icon: "📊" },
     { to: "/notifications", label: "Notifications", icon: "🔔" },
   ],
@@ -32,7 +35,8 @@ function AppLayout({
   setTheme,
   appName,
   role,
-  setRole,
+  user,
+  onLogout,
   unreadNotificationsCount = 0,
   canInstallApp = false,
   onInstallApp,
@@ -59,11 +63,6 @@ function AppLayout({
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   }
 
-  function logoutRole() {
-    setRole("");
-    navigate("/role", { replace: true });
-  }
-
   function closeMobileMenu() {
     setMobileMenuOpen(false);
   }
@@ -80,6 +79,13 @@ function AppLayout({
   async function handleInstallClick() {
     if (!onInstallApp) return;
     await onInstallApp();
+  }
+
+  function handleLogoutClick() {
+    if (onLogout) {
+      onLogout();
+    }
+    navigate("/login", { replace: true });
   }
 
   useEffect(() => {
@@ -311,6 +317,17 @@ function AppLayout({
           <div className="sidebar-footer glass-inner">
             <p className="sidebar-footer-label">Current role</p>
             <strong>{roleLabel}</strong>
+            {user ? (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  color: "var(--text-soft)",
+                  fontSize: "0.88rem",
+                }}
+              >
+                {user.name}
+              </p>
+            ) : null}
           </div>
 
           <nav className="sidebar-nav">
@@ -375,10 +392,10 @@ function AppLayout({
             <button
               className="secondary-btn small-btn"
               style={{ marginTop: "10px" }}
-              onClick={logoutRole}
+              onClick={handleLogoutClick}
               type="button"
             >
-              Logout Role
+              Logout
             </button>
           </div>
         </aside>
@@ -439,6 +456,17 @@ function AppLayout({
             <div style={{ minWidth: 0 }}>
               <p className="topbar-label">Welcome back</p>
               <h2 className="topbar-title">{appName} Control Panel</h2>
+              {user ? (
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "var(--text-soft)",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {user.name} • {user.email}
+                </p>
+              ) : null}
             </div>
 
             <div className="topbar-actions">
