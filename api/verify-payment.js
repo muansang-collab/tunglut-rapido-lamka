@@ -40,6 +40,8 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       success: verified,
       verified,
+      paymentId: razorpay_payment_id,
+      orderId: order_id,
     });
   } catch (error) {
     console.error("VERIFY_PAYMENT_ERROR:", error);
