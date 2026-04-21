@@ -1,6 +1,16 @@
-const Razorpay = require("razorpay");
+import Razorpay from "razorpay";
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
+  if (req.method === "GET") {
+    return res.status(200).json({
+      ok: true,
+      route: "/api/create-order",
+      hasKeyId: Boolean(process.env.RAZORPAY_KEY_ID),
+      hasKeySecret: Boolean(process.env.RAZORPAY_KEY_SECRET),
+      message: "Create-order API is reachable",
+    });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
@@ -55,7 +65,11 @@ module.exports = async function handler(req, res) {
 
     return res.status(500).json({
       success: false,
-      error: error?.description || error?.message || "Failed to create order",
+      error:
+        error?.error?.description ||
+        error?.description ||
+        error?.message ||
+        "Failed to create order",
     });
   }
-};
+}
