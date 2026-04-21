@@ -93,6 +93,16 @@ function PaymentsPage({ appData, setAppData, role, user }) {
     });
   }
 
+  async function readJsonSafely(response) {
+    const text = await response.text();
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(text || "Server returned non-JSON response");
+    }
+  }
+
   async function handleRazorpayPay() {
     if (!selectedBooking) {
       setMessage("Please choose a booking first.");
@@ -126,7 +136,7 @@ function PaymentsPage({ appData, setAppData, role, user }) {
         }),
       });
 
-      const createOrderData = await createOrderResponse.json();
+      const createOrderData = await readJsonSafely(createOrderResponse);
 
       if (!createOrderResponse.ok || !createOrderData?.success) {
         setMessage(createOrderData?.error || "Failed to create order.");
@@ -166,104 +176,112 @@ function PaymentsPage({ appData, setAppData, role, user }) {
               }),
             });
 
-            const verifyData = await verifyResponse.json();
+            const verifyData = await readJsonSafely(verifyResponse);
 
             if (!verifyResponse.ok || !verifyData?.verified) {
               const auditEntry = createAudit(
                 "Payment Verification Failed",
                 selectedBooking,
-                "Razorpay payment returned but signature verification failed."
+                verifyData?.error || "Signature verification failed."
               );
 
-              const nextBookings = bookings.map((booking) => {
-                if (String(booking.id) !== String(selectedBooking.id)) return booking;
+              setAppData((prev) => {
+                const nextBookings = prev.bookings.map((booking) => {
+                  if (String(booking.id) !== String(selectedBooking.id)) {
+                    return booking;
+                  }
 
-                return updateBookingWithAudit(booking, auditEntry, {
-                  paymentMethod: "Razorpay",
-                  paymentStatus: "Failed",
+                  return updateBookingWithAudit(booking, auditEntry, {
+                    paymentMethod: "Razorpay",
+                    paymentStatus: "Failed",
+                  });
                 });
+
+                const nextNotifications = [
+                  createNotification(
+                    "warning",
+                    "Payment Verification Failed",
+                    `${selectedBooking.riderName} payment could not be verified`
+                  ),
+                  ...(prev.notifications || []),
+                ];
+
+                return {
+                  ...prev,
+                  bookings: nextBookings,
+                  notifications: nextNotifications,
+                  auditLogs: [auditEntry, ...(prev.auditLogs || [])],
+                };
               });
 
-              const nextNotifications = [
-                createNotification(
-                  "warning",
-                  "Payment Verification Failed",
-                  `${selectedBooking.riderName} payment could not be verified`
-                ),
-                ...notifications,
-              ];
-
-              setAppData((prev) => ({
-                ...prev,
-                bookings: nextBookings,
-                notifications: nextNotifications,
-                auditLogs: [auditEntry, ...(prev.auditLogs || [])],
-              }));
-
-              setMessage("Payment verification failed.");
+              setMessage(verifyData?.error || "Payment verification failed.");
               return;
             }
 
-            const alreadyRecorded = transactions.some(
-              (item) =>
-                String(item.bookingId) === String(selectedBooking.id) &&
-                item.source === "Razorpay Payment"
-            );
+            setAppData((prev) => {
+              const alreadyRecorded = (prev.transactions || []).some(
+                (item) =>
+                  String(item.bookingId) === String(selectedBooking.id) &&
+                  item.source === "Razorpay Payment"
+              );
 
-            const auditEntry = createAudit(
-              "Razorpay Payment Completed",
-              selectedBooking,
-              `Verified Razorpay payment for ₹${Number(
-                selectedBooking.fare || 0
-              ).toLocaleString()}. Payment ID: ${verifyData.paymentId}`
-            );
+              const auditEntry = createAudit(
+                "Razorpay Payment Completed",
+                selectedBooking,
+                `Verified Razorpay payment for ₹${Number(
+                  selectedBooking.fare || 0
+                ).toLocaleString()}. Payment ID: ${verifyData.paymentId}`
+              );
 
-            const nextBookings = bookings.map((booking) => {
-              if (String(booking.id) !== String(selectedBooking.id)) return booking;
+              const nextBookings = prev.bookings.map((booking) => {
+                if (String(booking.id) !== String(selectedBooking.id)) {
+                  return booking;
+                }
 
-              return updateBookingWithAudit(booking, auditEntry, {
-                paymentMethod: "Razorpay",
-                paymentStatus: "Paid",
-                paymentGateway: "Razorpay",
-                paymentGatewayOrderId: verifyData.orderId,
-                paymentGatewayPaymentId: verifyData.paymentId,
+                return updateBookingWithAudit(booking, auditEntry, {
+                  paymentMethod: "Razorpay",
+                  paymentStatus: "Paid",
+                  paymentGateway: "Razorpay",
+                  paymentGatewayOrderId: verifyData.orderId,
+                  paymentGatewayPaymentId: verifyData.paymentId,
+                });
               });
+
+              const nextTransactions = alreadyRecorded
+                ? prev.transactions
+                : [
+                    {
+                      id: `razorpay-pay-${selectedBooking.id}`,
+                      bookingId: selectedBooking.id,
+                      paymentId: verifyData.paymentId,
+                      orderId: verifyData.orderId,
+                      type: "Income",
+                      title: `Razorpay payment • ${selectedBooking.riderName}`,
+                      amount: Number(selectedBooking.fare || 0),
+                      method: "Razorpay",
+                      source: "Razorpay Payment",
+                      createdAt: new Date().toLocaleString(),
+                    },
+                    ...(prev.transactions || []),
+                  ];
+
+              const nextNotifications = [
+                createNotification(
+                  "success",
+                  "Payment Received",
+                  `₹${Number(selectedBooking.fare || 0).toLocaleString()} received from ${selectedBooking.riderName} via Razorpay`
+                ),
+                ...(prev.notifications || []),
+              ];
+
+              return {
+                ...prev,
+                bookings: nextBookings,
+                transactions: nextTransactions,
+                notifications: nextNotifications,
+                auditLogs: [auditEntry, ...(prev.auditLogs || [])],
+              };
             });
-
-            const nextTransactions = alreadyRecorded
-              ? transactions
-              : [
-                  {
-                    id: `razorpay-pay-${selectedBooking.id}`,
-                    bookingId: selectedBooking.id,
-                    paymentId: verifyData.paymentId,
-                    orderId: verifyData.orderId,
-                    type: "Income",
-                    title: `Razorpay payment • ${selectedBooking.riderName}`,
-                    amount: Number(selectedBooking.fare || 0),
-                    method: "Razorpay",
-                    source: "Razorpay Payment",
-                    createdAt: new Date().toLocaleString(),
-                  },
-                  ...transactions,
-                ];
-
-            const nextNotifications = [
-              createNotification(
-                "success",
-                "Payment Received",
-                `₹${Number(selectedBooking.fare || 0).toLocaleString()} received from ${selectedBooking.riderName} via Razorpay`
-              ),
-              ...notifications,
-            ];
-
-            setAppData((prev) => ({
-              ...prev,
-              bookings: nextBookings,
-              transactions: nextTransactions,
-              notifications: nextNotifications,
-              auditLogs: [auditEntry, ...(prev.auditLogs || [])],
-            }));
 
             setMessage("Payment verified and booking marked as Paid.");
           } catch (error) {
@@ -291,30 +309,34 @@ function PaymentsPage({ appData, setAppData, role, user }) {
           "Customer attempted payment but it failed at checkout."
         );
 
-        const nextBookings = bookings.map((booking) => {
-          if (String(booking.id) !== String(selectedBooking.id)) return booking;
+        setAppData((prev) => {
+          const nextBookings = prev.bookings.map((booking) => {
+            if (String(booking.id) !== String(selectedBooking.id)) {
+              return booking;
+            }
 
-          return updateBookingWithAudit(booking, auditEntry, {
-            paymentMethod: "Razorpay",
-            paymentStatus: "Failed",
+            return updateBookingWithAudit(booking, auditEntry, {
+              paymentMethod: "Razorpay",
+              paymentStatus: "Failed",
+            });
           });
+
+          const nextNotifications = [
+            createNotification(
+              "warning",
+              "Payment Failed",
+              `${selectedBooking.riderName} payment failed in Razorpay`
+            ),
+            ...(prev.notifications || []),
+          ];
+
+          return {
+            ...prev,
+            bookings: nextBookings,
+            notifications: nextNotifications,
+            auditLogs: [auditEntry, ...(prev.auditLogs || [])],
+          };
         });
-
-        const nextNotifications = [
-          createNotification(
-            "warning",
-            "Payment Failed",
-            `${selectedBooking.riderName} payment failed in Razorpay`
-          ),
-          ...notifications,
-        ];
-
-        setAppData((prev) => ({
-          ...prev,
-          bookings: nextBookings,
-          notifications: nextNotifications,
-          auditLogs: [auditEntry, ...(prev.auditLogs || [])],
-        }));
 
         setMessage("Payment failed.");
       });
