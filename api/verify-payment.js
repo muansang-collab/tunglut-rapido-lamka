@@ -1,5 +1,3 @@
-const crypto = require("crypto");
-
 module.exports = async function handler(req, res) {
   try {
     if (req.method === "GET") {
@@ -27,6 +25,8 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    const crypto = require("crypto");
+
     const body =
       typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
 
@@ -41,11 +41,9 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const payload = `${orderId}|${paymentId}`;
-
     const expectedSignature = crypto
       .createHmac("sha256", keySecret)
-      .update(payload)
+      .update(`${orderId}|${paymentId}`)
       .digest("hex");
 
     const verified = expectedSignature === signature;
