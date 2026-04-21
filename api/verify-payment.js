@@ -1,4 +1,6 @@
-module.exports = async function handler(req, res) {
+import crypto from "crypto";
+
+export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       return res.status(200).json({
@@ -24,8 +26,6 @@ module.exports = async function handler(req, res) {
         error: "Missing Razorpay secret",
       });
     }
-
-    const crypto = require("crypto");
 
     const body =
       typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
@@ -62,4 +62,4 @@ module.exports = async function handler(req, res) {
       error: error?.message || "Verification failed",
     });
   }
-};
+}
