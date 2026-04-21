@@ -1,23 +1,23 @@
 const crypto = require("crypto");
 
 module.exports = async function handler(req, res) {
-  if (req.method === "GET") {
-    return res.status(200).json({
-      ok: true,
-      route: "/api/verify-payment",
-      hasKeySecret: Boolean(process.env.RAZORPAY_KEY_SECRET),
-      message: "Verify-payment API is reachable",
-    });
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      success: false,
-      error: "Method not allowed",
-    });
-  }
-
   try {
+    if (req.method === "GET") {
+      return res.status(200).json({
+        ok: true,
+        route: "/api/verify-payment",
+        hasKeySecret: Boolean(process.env.RAZORPAY_KEY_SECRET),
+        message: "Verify-payment API is reachable",
+      });
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        success: false,
+        error: "Method not allowed",
+      });
+    }
+
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
     if (!keySecret) {
@@ -28,7 +28,7 @@ module.exports = async function handler(req, res) {
     }
 
     const body =
-      typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+      typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
 
     const orderId = body.order_id;
     const paymentId = body.razorpay_payment_id;
@@ -41,23 +41,23 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    const payload = `${orderId}|${paymentId}`;
+
     const expectedSignature = crypto
       .createHmac("sha256", keySecret)
-      .update(`${orderId}|${paymentId}`)
+      .update(payload)
       .digest("hex");
 
     const verified = expectedSignature === signature;
 
     return res.status(200).json({
-      success: verified,
+      success: true,
       verified,
       paymentId,
       orderId,
-      expectedSignature,
-      receivedSignature: signature,
     });
   } catch (error) {
-    console.error("VERIFY_PAYMENT_ERROR:", error);
+    console.error("VERIFY_PAYMENT_FATAL:", error);
 
     return res.status(500).json({
       success: false,
